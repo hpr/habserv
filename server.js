@@ -21,7 +21,11 @@ const whitelist = [
 ];
 
 app.use(cors());
-app.use(express.json());
+app.use(
+  express.json({
+    type: () => true,
+  })
+);
 app.use(
   "/p",
   createProxyMiddleware({
@@ -36,7 +40,8 @@ app.use(
 
 app.post("/fantasy", async (req, res) => {
   let output = { status: "failure" };
-  switch (req.body.action) {
+  const { body } = req;
+  switch (body.action) {
     case "register": {
       const { email, name, password } = body;
       const salt = crypto.randomBytes(128).toString("base64");
