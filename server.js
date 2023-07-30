@@ -82,6 +82,7 @@ app.use("/match", async (req, res) => {
           })
         ).json()
       ).data.competitor;
+      athlete.iaafId = basicInfo.basicData.iaafId;
 
       const competitor = (
         await (
@@ -155,14 +156,14 @@ app.use("/match", async (req, res) => {
     }
     for (const athlete of cutAthletes) {
       const idx = cutAthletes.indexOf(athlete);
-      const { id, fullName } = athlete;
+      const { id, fullName, iaafId } = athlete;
       const totalChars = athletePrompts.reduce((acc, x) => acc + x.length, 0);
       if (totalChars < 15000) {
         const qid = wbk.parse.pagesTitles(
           await (
             await fetch(
               wbk.cirrusSearchPages({
-                haswbstatement: `${P_WA_ATHLETE_ID}=${id}`,
+                haswbstatement: `${P_WA_ATHLETE_ID}=${id}${iaafId ? `|${P_WA_ATHLETE_ID}=${iaafId}` : ''}`,
               })
             )
           ).json()
@@ -195,7 +196,7 @@ app.use("/match", async (req, res) => {
         }
       }
     }
-    prompt += athletePrompts.join("\n\n") + '\n\n';
+    prompt += athletePrompts.join("\n\n") + "\n\n";
     prompt += `Please predict the final places and times of the athletes. List the athletes in order of finish with their times. Then, explain why you think they will finish in that order. In your reasoning, compare athletes with each other and don't be afraid to make harsh judgements based on the data. Make reference to specific standout performances for the athletes in your reasoning, whether good or bad.`;
     console.log(prompt);
     console.log(prompt.length);
