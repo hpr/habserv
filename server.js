@@ -11,6 +11,8 @@ const {
   disciplines,
   GRAPHQL_ENDPOINT,
   GRAPHQL_API_KEY,
+  MAX_CONTEXT_LENGTH,
+  POST_PROMPT,
   GetCompetitorBasicInfo,
   GetSingleCompetitorResultsDate,
   P_WA_ATHLETE_ID,
@@ -64,6 +66,7 @@ app.use("/match", async (req, res) => {
     if (!["Men", "Women"].includes(gender))
       return res.send({ error: "Invalid gender" });
     let prompt = `Write a race prediction and preview for the ${gender}'s ${discipline} in a hypothetical athletics competition. Start your response with a listing of the predicted finish and times of the athletes. Here are the competitors:\n\n`;
+    let prePromptLength = prompt.length;
     const athletePrompts = [];
     const cutAthletes = athletes.slice(0, 12);
     for (const athlete of cutAthletes) {
@@ -185,7 +188,7 @@ app.use("/match", async (req, res) => {
                     exintro: true,
                     explaintext: true,
                     redirects: 1,
-                    exchars: 900,
+                    exchars: Math.floor((MAX_CONTEXT_LENGTH - (prePromptLength + POST_PROMPT.length + 100)) / cutAthletes.length),
                     titles: entity.sitelinks.enwiki,
                   })
               )
@@ -197,7 +200,7 @@ app.use("/match", async (req, res) => {
       }
     }
     prompt += athletePrompts.join("\n\n") + "\n\n";
-    prompt += `Please predict the final places and times of the athletes. List the athletes in order of finish with their times. Then, explain why you think they will finish in that order. In your reasoning, compare athletes with each other and don't be afraid to make harsh judgements based on the data. Make reference to specific standout performances for the athletes in your reasoning, whether good or bad.`;
+    prompt += POST_PROMPT;
     console.log(prompt);
     console.log(prompt.length);
     const completion = await openai.createChatCompletion({
