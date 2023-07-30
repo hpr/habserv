@@ -1,6 +1,6 @@
 module.exports = {
   MAX_CONTEXT_LENGTH: 16000,
-  POST_PROMPT: `Please predict the final places and times of the athletes. List the athletes in order of finish with their times. Then, explain why you think they will finish in that order. In your reasoning, compare athletes with each other using the Wikipedia profiles and reusults, and don't be afraid to make harsh judgements based on the data. Make reference to specific standout performances for the athletes in your reasoning, whether good or bad.`,
+  POST_PROMPT: `Please predict the final places and times of the athletes. List the athletes in order of finish with their predicted times (don't just copy their personal best, predict a new time). Then, explain why you think they will finish in that order. In your reasoning, compare athletes with each other using the Wikipedia profiles and reusults, and don't be afraid to make harsh judgements based on the data. Make reference to specific standout performances for the athletes in your reasoning, whether good or bad.`,
   P_WA_ATHLETE_ID: 'P1146',
   GRAPHQL_ENDPOINT:
     "https://4usfq7rw2jf3bbrvf5jolayrxq.appsync-api.eu-west-1.amazonaws.com/graphql",
