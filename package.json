@@ -17,6 +17,7 @@
     "http-proxy-middleware": "^2.0.6",
     "name-fixer": "^1.0.0",
     "nodemon": "^2.0.22",
-    "openai": "^3.3.0"
+    "openai": "^3.3.0",
+    "wikibase-sdk": "^9.2.0"
   }
 }

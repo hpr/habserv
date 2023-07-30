@@ -1,4 +1,5 @@
 module.exports = {
+  P_WA_ATHLETE_ID: 'P1146',
   GRAPHQL_ENDPOINT:
     "https://4usfq7rw2jf3bbrvf5jolayrxq.appsync-api.eu-west-1.amazonaws.com/graphql",
   GRAPHQL_API_KEY: "da2-erlx4oraybbjrlxorsdgmemgua",

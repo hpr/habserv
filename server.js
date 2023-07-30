@@ -13,6 +13,7 @@ const {
   GRAPHQL_API_KEY,
   GetCompetitorBasicInfo,
   GetSingleCompetitorResultsDate,
+  P_WA_ATHLETE_ID,
 } = require("./const");
 const { getAge, nth } = require("./util");
 const db = require("better-sqlite3")("/meta/h/habs/db/fantasy1500.db");
@@ -23,6 +24,15 @@ const openai = new OpenAIApi(
     apiKey: process.env.OPENAI_API_KEY,
   })
 );
+
+let WBK, wbk;
+(async () => {
+  WBK = (await import("wikibase-sdk")).WBK;
+  wbk = WBK({
+    instance: "https://www.wikidata.org",
+    sparqlEndpoint: "https://query.wikidata.org/sparql",
+  });
+})();
 
 const mkHash = async (pw, salt) =>
   new Promise((res) =>
@@ -54,7 +64,10 @@ app.use("/match", async (req, res) => {
     if (!["Men", "Women"].includes(gender))
       return res.send({ error: "Invalid gender" });
     let prompt = `Write a race prediction and preview for the ${gender}'s ${discipline} in a hypothetical athletics competition. Start your response with a listing of the predicted finish and times of the athletes. Here are the competitors:\n\n`;
-    for (const athlete of athletes.slice(0, 12)) {
+    const athletePrompts = [];
+    const cutAthletes = athletes.slice(0, 12);
+    for (const athlete of cutAthletes) {
+      let prompt = "";
       const { id, year } = athlete;
       const basicInfo = (
         await (
@@ -115,43 +128,76 @@ app.use("/match", async (req, res) => {
 
       const firstName = basicInfo.basicData.givenName;
       const lastName = nameFixer(basicInfo.basicData.familyName);
-      const pb = "";
       const nat = basicInfo.basicData.countryCode;
 
       const fullName = `${firstName} ${lastName}`;
+      athlete.fullName = fullName;
       console.log(fullName, id);
-      const rank = athletes.indexOf(athlete) + 1;
+      const rank = cutAthletes.indexOf(athlete) + 1;
 
       prompt += `${rank}. ${fullName} (${nat}), ${getAge(
         new Date(basicInfo.basicData.birthDate),
         year
       )} years old\n`;
 
-      // prompt += `Personal Best: ${pb || "N/A"}\n`;
-
       prompt += `Performances by ${fullName}:\n`;
-      prompt +=
-        competitor.resultsByDate
-          .map(
-            ({
-              discipline,
-              indoor,
-              date,
-              venue,
-              place,
-              mark,
-              wind,
-              notLegal,
-            }) =>
-              `${date.split(" ").slice(0, -1).join(" ")}: ${
-                Number.parseInt(place) ? `${nth(+place)} place, ` : ""
-              }time of ${mark}${notLegal ? "*" : ""}${
-                wind ? ` (${wind})` : ""
-              } in ${discipline}${indoor ? ` (indoor)` : ""} @ ${venue}`
-          )
-          .join("\n") + "\n\n";
+      prompt += competitor.resultsByDate
+        .map(
+          ({ discipline, indoor, date, venue, place, mark, wind, notLegal }) =>
+            `${date.split(" ").slice(0, -1).join(" ")}: ${
+              Number.parseInt(place) ? `${nth(+place)} place, ` : ""
+            }time of ${mark}${notLegal ? "*" : ""}${
+              wind ? ` (${wind})` : ""
+            } in ${discipline}${indoor ? ` (indoor)` : ""} @ ${venue}`
+        )
+        .join("\n");
+      athletePrompts.push(prompt);
     }
+    for (const athlete of cutAthletes) {
+      const idx = cutAthletes.indexOf(athlete);
+      const { id, fullName } = athlete;
+      const totalChars = athletePrompts.reduce((acc, x) => acc + x.length, 0);
+      if (totalChars < 15000) {
+        const qid = wbk.parse.pagesTitles(
+          await (
+            await fetch(
+              wbk.cirrusSearchPages({
+                haswbstatement: `${P_WA_ATHLETE_ID}=${id}`,
+              })
+            )
+          ).json()
+        )[0];
+        if (qid) {
+          const entity = wbk.simplify.entity(
+            (await (await fetch(wbk.getEntities({ ids: qid }))).json())
+              .entities[qid]
+          );
+          if (entity?.sitelinks?.enwiki) {
+            athletePrompts[idx] += `\nWikipedia bio for ${fullName}:\n`;
+            const bio = await (
+              await fetch(
+                "https://en.wikipedia.org/w/api.php?" +
+                  new URLSearchParams({
+                    format: "json",
+                    action: "query",
+                    prop: "extracts",
+                    exintro: true,
+                    explaintext: true,
+                    redirects: 1,
+                    exchars: 900,
+                    titles: entity.sitelinks.enwiki,
+                  })
+              )
+            ).json();
+            const page = Object.keys(bio.query.pages)[0];
+            athletePrompts[idx] += bio.query.pages[page].extract;
+          }
+        }
+      }
+    }
+    prompt += athletePrompts.join("\n\n") + '\n\n';
     prompt += `Please predict the final places and times of the athletes. List the athletes in order of finish with their times. Then, explain why you think they will finish in that order. In your reasoning, compare athletes with each other and don't be afraid to make harsh judgements based on the data. Make reference to specific standout performances for the athletes in your reasoning, whether good or bad.`;
+    console.log(prompt);
     console.log(prompt.length);
     const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo-16k",
