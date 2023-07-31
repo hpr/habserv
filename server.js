@@ -104,6 +104,7 @@ app.use("/match", async (req, res) => {
           })
         ).json()
       ).data.getSingleCompetitorResultsDate;
+      if (!competitor) continue;
       const prevYear = +year - 1;
       if (competitor.activeYears.includes(prevYear)) {
         const prevYearCompetitor = (
@@ -206,7 +207,7 @@ app.use("/match", async (req, res) => {
     const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo-16k",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.6,
+      temperature: 0.4,
     });
     console.log(completion.data.choices[0].message);
     res.send({ response: completion.data.choices[0].message.content });
