@@ -56,10 +56,12 @@ app.use(
   })
 );
 
+const waCache = JSON.parse(fs.readFileSync('./waCache.json', 'utf-8'));
+
 app.use("/match", async (req, res) => {
   console.log(req.body);
   try {
-    const { athletes, discipline, gender } = req.body;
+    const { athletes, discipline, gender, temperature } = req.body;
     if (!athletes) return res.send({ error: "No athletes" });
     if (!disciplines.includes(discipline))
       return res.send({ error: "Invalid discipline" });
@@ -72,7 +74,7 @@ app.use("/match", async (req, res) => {
     for (const athlete of cutAthletes) {
       let prompt = "";
       const { id, year } = athlete;
-      const basicInfo = (
+      const basicInfo = waCache[id]?.basicInfo ?? (
         await (
           await fetch(GRAPHQL_ENDPOINT, {
             headers: { "x-api-key": GRAPHQL_API_KEY },
@@ -85,9 +87,11 @@ app.use("/match", async (req, res) => {
           })
         ).json()
       ).data.competitor;
+      waCache[id] ??= {};
+      waCache[id].basicInfo ??= basicInfo;
       athlete.iaafId = basicInfo.basicData.iaafId;
 
-      const competitor = (
+      const competitor = waCache[id]?.[year] ?? (
         await (
           await fetch(GRAPHQL_ENDPOINT, {
             headers: { "x-api-key": GRAPHQL_API_KEY },
@@ -105,9 +109,11 @@ app.use("/match", async (req, res) => {
         ).json()
       ).data.getSingleCompetitorResultsDate;
       if (!competitor) continue;
+      waCache[id] ??= {};
+      waCache[id][year] ??= competitor;
       const prevYear = +year - 1;
       if (competitor.activeYears.includes(prevYear)) {
-        const prevYearCompetitor = (
+        const prevYearCompetitor = waCache[id]?.[prevYear] ?? (
           await (
             await fetch(GRAPHQL_ENDPOINT, {
               headers: { "x-api-key": GRAPHQL_API_KEY },
@@ -124,6 +130,7 @@ app.use("/match", async (req, res) => {
             })
           ).json()
         ).data.getSingleCompetitorResultsDate;
+        waCache[id][prevYear] = prevYearCompetitor;
         competitor.resultsByDate = [
           ...prevYearCompetitor.resultsByDate,
           ...competitor.resultsByDate,
@@ -207,10 +214,11 @@ app.use("/match", async (req, res) => {
     const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo-16k",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.4,
+      temperature: temperature ?? 0.4,
     });
     console.log(completion.data.choices[0].message);
     res.send({ response: completion.data.choices[0].message.content });
+    fs.writeFileSync('./waCache.json', JSON.stringify(waCache));
   } catch (e) {
     console.log(e);
     res.send({ error: e.message });
