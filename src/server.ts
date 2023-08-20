@@ -1,13 +1,15 @@
-const express = require("express");
-const { Configuration, OpenAIApi } = require("openai");
-const { createProxyMiddleware } = require("http-proxy-middleware");
-const { nameFixer } = require("name-fixer");
-const https = require("https");
-const crypto = require("crypto");
-const cors = require("cors");
-const fs = require("fs");
-require("dotenv").config();
-const {
+import express from "express";
+import { Configuration, OpenAIApi } from "openai";
+import { createProxyMiddleware } from "http-proxy-middleware";
+import { nameFixer } from "name-fixer";
+import https from "https";
+import crypto from "crypto";
+import cors from "cors";
+import fs from "fs";
+import dotenv from "dotenv";
+dotenv.config();
+
+import {
   disciplines,
   fieldDisciplines,
   GRAPHQL_ENDPOINT,
@@ -17,8 +19,9 @@ const {
   GetCompetitorBasicInfo,
   GetSingleCompetitorResultsDate,
   P_WA_ATHLETE_ID,
-} = require("./const");
-const { getAge, nth } = require("./util");
+} from "./const";
+import { getAge, nth } from "./util";
+import { InstanceConfig, Wbk } from "wikibase-sdk";
 const db = require("better-sqlite3")("/meta/h/habs/db/fantasy1500.db");
 db.pragma("journal_mode = WAL");
 
@@ -28,7 +31,7 @@ const openai = new OpenAIApi(
   })
 );
 
-let WBK, wbk;
+let WBK: (config: InstanceConfig) => Wbk | undefined, wbk: Wbk | undefined;
 (async () => {
   WBK = (await import("wikibase-sdk")).WBK;
   wbk = WBK({
@@ -69,13 +72,11 @@ app.use("/match", async (req, res) => {
     if (!["Men", "Women"].includes(gender))
       return res.send({ error: "Invalid gender" });
     const isField = fieldDisciplines.includes(discipline);
-    let prompt = `Write a ${
-      isField ? "competition" : "race"
-    } prediction and preview for the ${gender}'s ${discipline} in an athletics championship. Start your response with a listing of the predicted finish and ${
-      isField ? "times" : "marks"
-    } of the athletes. Here are the competitors in no particular order:\n\n`;
+    let prompt = `Write a ${isField ? "competition" : "race"
+      } prediction and preview for the ${gender}'s ${discipline} in an athletics championship. Start your response with a listing of the predicted finish and ${isField ? "times" : "marks"
+      } of the athletes. Here are the competitors in no particular order:\n\n`;
     let prePromptLength = prompt.length;
-    const athletePrompts = [];
+    const athletePrompts: string[] = [];
     const cutAthletes = athletes.slice(0, 12);
     for (const athlete of cutAthletes) {
       let prompt = "";
@@ -168,10 +169,8 @@ app.use("/match", async (req, res) => {
       prompt += competitor.resultsByDate
         .map(
           ({ discipline, indoor, date, venue, place, mark, wind, notLegal }) =>
-            `${date}: ${
-              Number.parseInt(place) ? `${nth(+place)} place, ` : ""
-            }${isField ? 'mark' : 'time'} of ${mark}${notLegal ? "*" : ""}${
-              wind ? ` (${wind})` : ""
+            `${date}: ${Number.parseInt(place) ? `${nth(+place)} place, ` : ""
+            }${isField ? "mark" : "time"} of ${mark}${notLegal ? "*" : ""}${wind ? ` (${wind})` : ""
             } in ${discipline}${indoor ? ` (indoor)` : ""} @ ${venue}`
         )
         .join("\n");
@@ -182,42 +181,40 @@ app.use("/match", async (req, res) => {
       const { id, fullName, iaafId } = athlete;
       const totalChars = athletePrompts.reduce((acc, x) => acc + x.length, 0);
       if (totalChars < 50000) {
-        const qid = wbk.parse.pagesTitles(
+        const qid = wbk?.parse.pagesTitles(
           await (
             await fetch(
               wbk.cirrusSearchPages({
-                haswbstatement: `${P_WA_ATHLETE_ID}=${id}${
-                  iaafId ? `|${P_WA_ATHLETE_ID}=${iaafId}` : ""
-                }`,
+                haswbstatement: `${P_WA_ATHLETE_ID}=${id}${iaafId ? `|${P_WA_ATHLETE_ID}=${iaafId}` : ""
+                  }`,
               })
             )
           ).json()
-        )[0];
-        if (qid) {
-          const entity = wbk.simplify.entity(
+        )[0] as `Q${number}`;
+        if (qid && wbk) {
+          const entity =
             (await (await fetch(wbk.getEntities({ ids: qid }))).json())
               .entities[qid]
-          );
           if (entity?.sitelinks?.enwiki) {
             athletePrompts[idx] += `\nWikipedia bio for ${fullName}:\n`;
             const bio = await (
               await fetch(
                 "https://en.wikipedia.org/w/api.php?" +
-                  new URLSearchParams({
-                    format: "json",
-                    action: "query",
-                    prop: "extracts",
-                    exintro: true,
-                    explaintext: true,
-                    redirects: 1,
-                    exchars: 1000,
-                    // Math.floor(
-                    //   (MAX_CONTEXT_LENGTH -
-                    //     (prePromptLength + POST_PROMPT.length + 100)) /
-                    //     cutAthletes.length
-                    // ),
-                    titles: entity.sitelinks.enwiki,
-                  })
+                new URLSearchParams({
+                  format: "json",
+                  action: "query",
+                  prop: "extracts",
+                  exintro: "true",
+                  explaintext: "true",
+                  redirects: "1",
+                  exchars: "1000",
+                  // Math.floor(
+                  //   (MAX_CONTEXT_LENGTH -
+                  //     (prePromptLength + POST_PROMPT.length + 100)) /
+                  //     cutAthletes.length
+                  // ),
+                  titles: entity.sitelinks.enwiki,
+                })
               )
             ).json();
             const page = Object.keys(bio.query.pages)[0];
@@ -227,7 +224,7 @@ app.use("/match", async (req, res) => {
       }
     }
     prompt += athletePrompts.join("\n\n") + "\n\n";
-    prompt += isField ? POST_PROMPT.replaceAll('time', 'mark') : POST_PROMPT;
+    prompt += isField ? POST_PROMPT.replaceAll("time", "mark") : POST_PROMPT;
     console.log(prompt);
     console.log(prompt.length);
     const completion = await openai.createChatCompletion({
@@ -236,7 +233,7 @@ app.use("/match", async (req, res) => {
       temperature: temperature ?? 0.7,
     });
     console.log(completion.data.choices[0].message);
-    res.send({ response: completion.data.choices[0].message.content });
+    res.send({ response: completion.data.choices[0].message?.content });
     fs.writeFileSync("./waCache.json", JSON.stringify(waCache));
   } catch (e) {
     console.log(e.message, e.response?.data);
