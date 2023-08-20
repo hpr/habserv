@@ -4,7 +4,7 @@
   "description": "",
   "main": "src/server.ts",
   "scripts": {
-    "start": "tsx watch ts/server.ts"
+    "start": "tsx watch src/server.ts"
   },
   "author": "",
   "license": "AGPLv3",
