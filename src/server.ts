@@ -7,6 +7,8 @@ import crypto from "crypto";
 import cors from "cors";
 import fs from "fs";
 import dotenv from "dotenv";
+import { Transform } from 'stream';
+import Unblocker from 'unblocker';
 dotenv.config();
 
 import {
@@ -54,6 +56,26 @@ const whitelist = [
 ];
 
 app.use(cors());
+
+const unblocker = new Unblocker({
+  prefix: `/${process.env.PROXY_SECRET}/`, responseMiddleware: [
+    function (data: { contentType: string, stream: Transform }) {
+      if (data.contentType == 'text/html') {
+        const myStream = new Transform({
+          decodeStrings: false,
+          transform(chunk, encoding, next) {
+            chunk = chunk.toString().replace(/VueRouter\.createWebHistory\('\/(\w+)'\)/, `VueRouter.createWebHistory('/${process.env.PROXY_SECRET}/${process.env.PROXY_SECRET_URL}$1')`);
+            this.push(chunk);
+            next();
+          }
+        });
+        data.stream = data.stream.pipe(myStream);
+      }
+    }
+  ]
+});
+app.use(unblocker);
+
 app.use(
   express.json({
     type: () => true,
@@ -75,7 +97,6 @@ app.use("/match", async (req, res) => {
     let prompt = `Write a ${isField ? "competition" : "race"
       } prediction and preview for the ${gender}'s ${discipline} in an athletics championship. Start your response with a listing of the predicted finish and ${isField ? "times" : "marks"
       } of the athletes. Here are the competitors in no particular order:\n\n`;
-    let prePromptLength = prompt.length;
     const athletePrompts: string[] = [];
     const cutAthletes = athletes.slice(0, 12);
     for (const athlete of cutAthletes) {
@@ -246,8 +267,7 @@ app.use(
   createProxyMiddleware({
     // router: (req) => req.url.match(/^\/p\/(.*)\//)[1],
     router: Object.fromEntries(whitelist.map((url) => [`/p/${url}`, url])),
-    pathRewrite: (path) =>
-      (path.match(/^\/p\/https?:\/\/[^\/]+(\/.*)$/) || " /")[1],
+    pathRewrite: (path) => (path.match(/^\/p\/https?:\/\/[^\/]+(\/.*)$/) || " /")[1],
     changeOrigin: true,
     logLevel: "debug",
   })
@@ -367,4 +387,4 @@ const server = https.createServer(
   },
   app
 );
-server.listen(8080);
+server.listen(8080).on('upgrade', unblocker.onUpgrade);
